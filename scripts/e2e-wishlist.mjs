@@ -1,0 +1,38 @@
+// End-to-end scenario for the Wishlist Integration server with the test partner:
+// test key → widget init on localhost → basket config → snippets → domain allowlist → revoke.
+import { spawn } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const server = spawn(process.execPath, [resolve(root, 'dist/wishlist.js')], { stdio: ['pipe', 'pipe', 'inherit'], env: process.env });
+const pending = new Map(); let buf = ''; let nextId = 1;
+server.stdout.on('data', (c) => { buf += c; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!l) continue; try { const m = JSON.parse(l); if (m.id !== undefined && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } } catch {} } });
+const req = (method, params) => new Promise((res, rej) => { const id = nextId++; const t = setTimeout(() => rej(new Error('timeout ' + method)), 90000); pending.set(id, (m) => { clearTimeout(t); m.error ? rej(new Error(JSON.stringify(m.error))) : res(m.result); }); server.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); });
+const call = async (name, args = {}) => { const r = await req('tools/call', { name, arguments: args }); const text = r.content.map((c) => c.text).join('\n'); let json = null; try { json = JSON.parse(text.slice(text.indexOf('{'))); } catch {} return { text, json, isError: !!r.isError }; };
+const step = (label, r, cond = !r.isError) => { console.log(`${cond ? '✓' : '✗'} ${label}${cond ? '' : ' — ' + r.text.slice(0, 400)}`); if (!cond) { console.log('E2E FAILED'); server.kill(); process.exit(1); } };
+await req('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e', version: '0' } });
+server.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }) + '\n');
+let r = await call('whoami'); step('whoami', r);
+r = await call('plans_list'); step('plans_list', r, !r.isError && /Starter/.test(r.text));
+r = await call('keys_create', { name: 'MCP e2e test key', environment: 'test' }); step('keys_create test', r);
+const key = r.json?.apiKey ?? r.json?.api_key ?? r.json?.key ?? r.json; const keyId = key?.id; const pk = key?.key ?? key?.value ?? key?.public_key; console.log('   key id', keyId, 'pk', String(pk).slice(0, 16) + '…');
+r = await call('widget_init_check', { public_key: pk, origin: 'http://localhost:3000' }); step('widget_init_check localhost', r, !r.isError && /token|ok|true/i.test(r.text));
+r = await call('usage_key', { api_key_id: keyId, public_key: pk }); step('usage_key', r);
+r = await call('baskets_create', { name: 'MCP e2e basket', cart_url: 'https://example-shop.test/cart', currency: 'EUR', styling: { borderRadius: 12 } }); step('baskets_create', r);
+const cfg = r.json?.config ?? r.json?.basket ?? r.json; const cfgId = cfg?.id ?? cfg?.config_id ?? cfg?.configId; console.log('   config id', cfgId);
+r = await call('baskets_get', { id: String(cfgId) }); step('baskets_get', r);
+r = await call('baskets_update', { id: String(cfgId), name: 'MCP e2e basket (renamed)' }); step('baskets_update', r);
+r = await call('baskets_public_config', { id: String(cfgId) }); step('baskets_public_config', r);
+r = await call('snippet_basket', { framework: 'html', public_key: pk, config_id: String(cfgId) }); step('snippet_basket html', r, !r.isError && r.text.includes(String(cfgId)));
+r = await call('snippet_save_button', { framework: 'shopify', public_key: pk }); step('snippet_save_button shopify', r);
+r = await call('snippet_hosted_list', { public_key: pk }); step('snippet_hosted_list', r);
+r = await call('keys_domains_set', { id: keyId, domains: ['example-shop.test', 'www.example-shop.test'] }); step('keys_domains_set', r);
+r = await call('keys_domains_get', { id: keyId }); step('keys_domains_get has 2 domains', r, !r.isError && r.text.includes('example-shop.test'));
+r = await call('widget_init_check', { public_key: pk, origin: 'https://not-allowed.example' }); step('widget_init_check blocks foreign origin', r, r.isError || /origin_not_allowed|not allowed|403/i.test(r.text));
+r = await call('keys_rotate', { id: keyId }); step('keys_rotate', r);
+r = await call('usage_get'); step('usage_get', r);
+r = await call('docs_search', { query: 'webhook', limit: 3 }); step('docs_search', r);
+r = await call('openapi_get', { path: '/widget/init' }); step('openapi_get /widget/init', r);
+r = await call('keys_revoke', { id: keyId }); step('keys_revoke (cleanup)', r);
+r = await call('baskets_delete', { id: String(cfgId) }); step('baskets_delete (cleanup)', r);
+console.log('\nE2E OK'); server.kill(); process.exit(0);
