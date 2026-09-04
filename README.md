@@ -1,5 +1,7 @@
 # @shareawish/mcp
 
+[![CI](https://github.com/shareawish/mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/shareawish/mcp/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@shareawish/mcp)](https://www.npmjs.com/package/@shareawish/mcp)
+
 Two [Model Context Protocol](https://modelcontextprotocol.io) servers (stdio) so that Claude, Cursor, Copilot & Co. can work with Share a Wish directly:
 
 | Server | Binary | For whom | What it does |
