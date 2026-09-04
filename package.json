@@ -1,6 +1,6 @@
 {
   "name": "@shareawish/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP servers for Share a Wish: build creator shops (lists, products with affiliate links, videos) and integrate the wishlist basket/save button (API keys, basket configs, snippets) from Claude, Cursor, Copilot and other MCP clients.",
   "license": "MIT",
   "type": "module",
