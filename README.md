@@ -13,7 +13,7 @@ Both are single-file bundles without runtime dependencies (Node ≥ 18).
 
 ## Install
 
-1. Create a personal access token in the [Partner Portal](https://partner.shareawish.shop) → API & Integrations → Access tokens (`saw_pat_…`, shown once).
+1. Create a personal access token in the [Partner Portal](https://partner.shareawish.shop) → Account Settings → Access tokens & AI agents (`saw_pat_…`, shown once).
 2. Add the server to your MCP client. Every Partner Portal account can use it, the Free plan included; plan limits apply exactly as in the portal.
 
 Claude Code:

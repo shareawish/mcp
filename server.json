@@ -3,12 +3,12 @@
   "name": "io.github.shareawish/mcp",
   "description": "Share a Wish: build creator affiliate shops and integrate the wishlist basket / save button from any MCP client.",
   "repository": { "url": "https://github.com/shareawish/mcp", "source": "github" },
-  "version_detail": { "version": "0.1.1" },
+  "version_detail": { "version": "0.1.2" },
   "packages": [
     {
       "registry_name": "npm",
       "name": "@shareawish/mcp",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "runtime_hint": "npx",
       "package_arguments": [{ "type": "positional", "value": "shareawish-creator-mcp", "description": "Creator Shop server (use shareawish-wishlist-mcp for the Wishlist Integration server)" }],
       "environment_variables": [

@@ -63,7 +63,7 @@ export function authConfigured(): boolean {
 export function authHelp(): string {
   return [
     'No partner credentials configured. Set one of:',
-    '  SHAREAWISH_TOKEN                         (recommended – personal access token from Partner Portal → API & Integrations → Access tokens)',
+    '  SHAREAWISH_TOKEN                         (recommended – personal access token from Partner Portal → Account Settings → Access tokens & AI agents)',
     '  SHAREAWISH_EMAIL + SHAREAWISH_PASSWORD   (your Partner Portal login; local use only)',
     '  SHAREAWISH_ACCESS_TOKEN                  (a Supabase session access token, valid ~1 hour)',
     '  SHAREAWISH_REFRESH_TOKEN                 (refresh token from a Partner Portal session)',
@@ -75,7 +75,7 @@ export function authHelp(): string {
 export async function getAccessToken(force = false): Promise<string> {
   const pat = process.env.SHAREAWISH_TOKEN?.trim();
   if (pat) {
-    if (!pat.startsWith(PAT_PREFIX)) throw new AuthError(`SHAREAWISH_TOKEN must start with ${PAT_PREFIX} (create one in the Partner Portal under API & Integrations → Access tokens).`);
+    if (!pat.startsWith(PAT_PREFIX)) throw new AuthError(`SHAREAWISH_TOKEN must start with ${PAT_PREFIX} (create one in the Partner Portal under Account Settings → Access tokens & AI agents).`);
     session = { accessToken: pat, expiresAt: Number.MAX_SAFE_INTEGER, userId: undefined };
     return pat;
   }
