@@ -181,8 +181,8 @@ server.registerTool('media_list', { title: 'List product videos', description: '
   inputSchema: { product_id: zid.optional(), shop_id: zid.optional() } },
   guard(async ({ product_id, shop_id }) => ok(await get(`${A}/me/media`, { query: { product_id, shop_id } }))));
 
-server.registerTool('media_upload_video', { title: 'Upload product video', description: 'Upload an MP4/MOV (max 200 MB) for a product from a local path or URL, optionally with a poster image, and publish it (status ready). Creator Free: 5 ready videos per shop.',
-  inputSchema: { product_id: zid, shop_id: zid.optional(), source: z.string().describe('Local .mp4/.mov path or URL'), poster_source: z.string().optional().describe('Optional local .jpg path or URL'), title: z.string().optional(), caption: z.string().optional(), language: z.string().optional(), duration_s: z.number().optional(), width: z.number().int().optional(), height: z.number().int().optional() } },
+server.registerTool('media_upload_video', { title: 'Upload product video', description: 'Upload an MP4/MOV (max 200 MB) for a product from a local path or URL, optionally with a poster image, and publish it (status ready). A video always belongs to at least one product (product_id); product_ids links further products that are shown next to the video in the shop\'s video feed. Creator Free: 5 ready videos per shop.',
+  inputSchema: { product_id: zid.describe('Primary product shown with the video'), product_ids: z.array(zid).max(20).optional().describe('Additional products featured in the video (must be in one of the shop\'s lists to appear)'), shop_id: zid.optional(), source: z.string().describe('Local .mp4/.mov path or URL'), poster_source: z.string().optional().describe('Optional local .jpg path or URL'), title: z.string().optional(), caption: z.string().optional(), language: z.string().optional(), duration_s: z.number().optional(), width: z.number().int().optional(), height: z.number().int().optional() } },
   guard(async (a) => {
     const video = await loadBytes(a.source);
     if (!['video/mp4', 'video/quicktime'].includes(video.mime)) return fail(`Unsupported mime ${video.mime}; use video/mp4 or video/quicktime.`);
@@ -194,12 +194,12 @@ server.registerTool('media_upload_video', { title: 'Upload product video', descr
       await putBinary(slot.poster.signed_url, poster.bytes, 'image/jpeg', { 'x-upsert': 'true' });
       poster_path = slot.poster.path;
     }
-    const created = await post(`${A}/me/media`, compact({ product_id: a.product_id, shop_id: a.shop_id, storage_path: slot.video.path, poster_path, duration_s: a.duration_s, width: a.width, height: a.height, bytes: video.bytes.length, mime: video.mime, title: a.title, caption: a.caption, language: a.language }));
+    const created = await post(`${A}/me/media`, compact({ product_id: a.product_id, product_ids: a.product_ids, shop_id: a.shop_id, storage_path: slot.video.path, poster_path, duration_s: a.duration_s, width: a.width, height: a.height, bytes: video.bytes.length, mime: video.mime, title: a.title, caption: a.caption, language: a.language }));
     return ok(created, `Uploaded ${video.bytes.length} bytes to ${slot.video.path}`);
   }));
 
-server.registerTool('media_update', { title: 'Update product video', description: 'Change title/caption/language/position or hide/show (status hidden|ready).',
-  inputSchema: { id: zid, title: z.string().optional(), caption: z.string().optional(), language: z.string().optional(), position: z.number().int().optional(), status: z.enum(['hidden', 'ready']).optional() } },
+server.registerTool('media_update', { title: 'Update product video', description: 'Change title/caption/language/position, hide/show (status hidden|ready) or replace the additionally linked products (product_ids; the primary product_id is kept).',
+  inputSchema: { id: zid, title: z.string().optional(), caption: z.string().optional(), language: z.string().optional(), position: z.number().int().optional(), status: z.enum(['hidden', 'ready']).optional(), product_ids: z.array(zid).max(20).optional().describe('Full replacement of the extra linked products') } },
   guard(async ({ id, ...rest }) => ok(await patch(`${A}/me/media/${id}`, compact(rest)))));
 
 server.registerTool('media_delete', { title: 'Delete product video', description: 'Delete a product video and its files.', inputSchema: { id: zid } },

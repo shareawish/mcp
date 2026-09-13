@@ -79,5 +79,5 @@ Run the end-to-end scripts with a dedicated test partner: they write real rows (
 - Tool names use `snake_case` (`shops_create`, `keys_domains_set`) for maximum client compatibility.
 - `shops_update` merges `settings` with the current values (the API overwrites the whole JSON otherwise).
 - `products_add_by_url` first calls the scrape preview to reuse an existing catalog product, then adds the item with your `affiliate_url`.
-- `media_upload_video`: MP4/MOV up to 200 MB; Creator Free allows 5 ready videos per shop.
+- `media_upload_video`: MP4/MOV up to 200 MB; Creator Free allows 5 ready videos per shop. Every video belongs to one primary product (`product_id`); `product_ids` links further products that are shown next to the video in the shop's video feed (`https://shareawish.shop/<handle>`, "Videos" row). `media_update(product_ids=[...])` replaces those links.
 - Live keys created after 2026-09-01 need at least one allowed domain; `localhost` is always allowed.
