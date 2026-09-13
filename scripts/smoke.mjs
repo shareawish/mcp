@@ -63,13 +63,19 @@ if (which === 'wishlist' || which === 'all') await run('wishlist', async (c) => 
   }
 });
 
-if (which === 'creator' || which === 'all') await run('creator', async (c) => {
-  let r = await c.call('shops_check_handle', { handle: 'Lenas Picks!' });
+if (which === 'creator' || which === 'all') await run('creator', async (c, names) => {
+  check('creator exposes docs/snippet tools', ['docs_search', 'snippet_save_button', 'snippet_basket'].every((n) => names.includes(n)));
+  let r = await c.call('snippet_basket', { framework: 'html', config_id: 'bkt_test' }); check('snippet_basket html (creator) mentions https requirement', !r.isError && r.text.includes('bkt_test') && /https/.test(r.text));
+  r = await c.call('snippet_save_button', { framework: 'html' }); check('snippet_save_button (creator) points to wishlist server for keys', !r.isError && r.text.includes('data-shareawish'));
+  r = await c.call('docs_search', { query: 'basket https' }); check('docs_search (creator) finds the https note', !r.isError && /frame-ancestors/i.test(r.text), `${r.text.length} chars`);
+  r = await c.call('shops_check_handle', { handle: 'Lenas Picks!' });
   if (live) check('shops_check_handle (live)', !r.isError && r.text.includes('"handle": "lenas-picks"'), r.text.replace(/\s+/g, ' ').slice(0, 100));
   else check('shops_check_handle without credentials → auth error', r.isError && /credentials|Authentication/i.test(r.text));
   if (live) {
     r = await c.call('whoami'); check('whoami (live)', !r.isError, r.text.replace(/\s+/g, ' ').slice(0, 120));
-    r = await c.call('shops_list'); check('shops_list (live)', !r.isError);
+    r = await c.call('whoami'); check('whoami (live) has partner + counts', !r.isError && /"partner"/.test(r.text) && /"shops_total"/.test(r.text));
+    r = await c.call('shops_list', { limit: 5 }); check('shops_list (live) compact + paged', !r.isError && /"total"/.test(r.text) && !/"settings"/.test(r.text) && r.text.length < 4000, `${r.text.length} chars`);
+    r = await c.call('shops_list', { limit: 1, full: true }); check('shops_list full=true returns raw record', !r.isError && /"settings"/.test(r.text));
     r = await c.call('media_list'); check('media_list (live)', !r.isError, r.isError ? r.text.slice(0, 100) : '');
     r = await c.call('products_preview_url', { url: 'https://www.amazon.de/dp/B0C6FFBHRT', market_code: 'de-DE' }); check('products_preview_url (live)', !r.isError, r.text.replace(/\s+/g, ' ').slice(0, 120));
   }

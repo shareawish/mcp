@@ -41,6 +41,8 @@ const HINTS: Record<string, string> = {
   no_webhook: 'This basket configuration has no webhookUrl – set one with baskets_update first.',
   cannot_delete_active_used_key: 'Revoke the key first; keys that were used cannot be deleted while active.',
   handle_taken: 'Choose another handle – check availability with shops_check_handle.',
+  partner_not_found: 'The signed-in user has no partner account yet – open the Partner Portal once to create it.',
+  not_found: 'Not found. For /baskets/{id}: the basket config id (bkt_…) is unknown – create one with baskets_create (shareawish-wishlist server) or in the Partner Portal.',
 };
 
 const MIME_BY_EXT: Record<string, string> = {

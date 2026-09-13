@@ -11,35 +11,68 @@ const zid = z.union([z.number().int(), z.string().regex(/^\d+$/)]).transform((v)
 import { PARTNER_API_BASE, PUBLIC_API_BASE, authConfigured, authHelp, getAccessToken, currentSessionInfo } from '../shared/auth.js';
 import { get, post, put, patch, del, putBinary } from '../shared/http.js';
 import { ok, fail, guard, loadBytes, slugify, compact, toArrayBuffer } from '../shared/util.js';
+import { registerDocsAndSnippetTools, INTEGRATION_POINTER } from '../shared/docs.js';
+import { VERSION } from '../shared/version.js';
 
 const P = PARTNER_API_BASE;
 const A = PUBLIC_API_BASE;
 const SHOP_URL = (handle: string, domain?: string | null) => (domain ? `https://${domain}` : `https://shareawish.shop/${handle}`);
 
-const server = new McpServer({ name: 'shareawish-creator', version: '0.1.0' }, {
+const server = new McpServer({ name: 'shareawish-creator', version: VERSION }, {
   instructions: [
     'Share a Wish Creator Shop server. Typical flow: whoami → shops_check_handle → shops_create → shops_upload_image (logo/cover) →',
     'lists_create → products_add_by_url (source_url + affiliate_url; the product page is scraped for title/image/price) →',
     'media_upload_video (optional product videos) → shops_publish(status="live"). Public URL: https://shareawish.shop/<handle>.',
     'Settings are merged server-side by shops_update (never overwrite unknown keys). All actions run on the signed-in partner account.',
+    'List tools return compact rows (shops_list, lists_list); pass full=true for the raw records or use shops_get / lists_get for one item.',
+    INTEGRATION_POINTER,
     authConfigured() ? '' : authHelp(),
   ].filter(Boolean).join('\n'),
 });
 
+/** Compact shop row for list output. */
+type ShopRow = { id: number; name: string; slug: string; is_public: boolean; domain?: string | null; template_code?: string; allowed_markets?: string[] | null; follower_count?: number; updated_at?: string; published_at?: string | null };
+const shopRow = (s: ShopRow) => ({ id: s.id, name: s.name, handle: s.slug, public: s.is_public, url: SHOP_URL(s.slug, s.domain), template: s.template_code, markets: s.allowed_markets ?? null, followers: s.follower_count ?? 0, updated_at: s.updated_at });
+type ListRow = { id: string | number; name: string; slug: string; isPublic: boolean; isFeatured: boolean; productCount?: number; market_code?: string | null; description?: string | null; updatedAt?: string };
+const listRow = (l: ListRow) => ({ id: l.id, name: l.name, slug: l.slug, public: l.isPublic, featured: l.isFeatured, products: l.productCount ?? 0, market: l.market_code ?? null, description: l.description ? (l.description.length > 120 ? `${l.description.slice(0, 117)}…` : l.description) : null, updated_at: l.updatedAt });
+
+type PartnerProfile = { id: string; email?: string; name?: string; company_name?: string | null; website_url?: string | null; type?: string; plan?: string };
+
 // ── identity ────────────────────────────────────────────────────────────────
 server.registerTool('whoami', {
   title: 'Who am I',
-  description: 'Verify credentials and show the signed-in partner (email, number of shops). Call this first.',
+  description: 'Verify credentials and show the signed-in partner (email, name, plan) and the number of shops. Call this first.',
   inputSchema: {},
 }, guard(async () => {
   await getAccessToken();
-  const shops = await get<{ shops: Array<{ id: number; name: string; slug: string; is_public: boolean }> }>(`${P}/shops`);
-  return ok({ session: currentSessionInfo(), shops: shops.shops.map((s) => ({ id: s.id, name: s.name, handle: s.slug, public: s.is_public, url: SHOP_URL(s.slug) })) });
+  const [partner, shops] = await Promise.all([
+    get<PartnerProfile>(`${P}/auth/partner`).catch(() => null),
+    get<{ shops: ShopRow[] }>(`${P}/shops`),
+  ]);
+  const session = currentSessionInfo();
+  const rows = shops.shops.map(shopRow);
+  return ok({
+    partner: partner ? { user_id: partner.id, email: partner.email, name: partner.name, company: partner.company_name || null, website: partner.website_url || null, type: partner.type, plan: partner.plan } : null,
+    session: { auth: process.env.SHAREAWISH_TOKEN ? 'personal_access_token' : 'session', ...session },
+    shops_total: rows.length,
+    shops_public: rows.filter((r) => r.public).length,
+    shops: rows.slice(0, 25),
+    note: rows.length > 25 ? `Showing 25 of ${rows.length} shops – use shops_list for all.` : undefined,
+    integration: INTEGRATION_POINTER,
+  });
 }));
 
 // ── shops ───────────────────────────────────────────────────────────────────
-server.registerTool('shops_list', { title: 'List shops', description: 'List all creator shops of the partner.', inputSchema: {} },
-  guard(async () => ok(await get(`${P}/shops`))));
+server.registerTool('shops_list', { title: 'List shops', description: 'Creator shops of the partner as compact rows (id, name, handle, public, url, template, markets, followers, updated_at). Filter with q, page with limit/offset; full=true returns the raw records (large – settings, description, images).',
+  inputSchema: { q: z.string().optional().describe('Case-insensitive filter on name/handle'), public_only: z.boolean().optional(), limit: z.number().int().min(1).max(200).default(50), offset: z.number().int().min(0).default(0), full: z.boolean().default(false) } },
+  guard(async ({ q, public_only, limit, offset, full }) => {
+    const r = await get<{ shops: ShopRow[] }>(`${P}/shops`);
+    let shops = r.shops || [];
+    if (q) { const needle = q.toLowerCase(); shops = shops.filter((s) => s.name?.toLowerCase().includes(needle) || s.slug?.toLowerCase().includes(needle)); }
+    if (public_only) shops = shops.filter((s) => s.is_public);
+    const page = shops.slice(offset, offset + limit);
+    return ok({ total: shops.length, offset, limit, shops: full ? page : page.map(shopRow), next_offset: offset + limit < shops.length ? offset + limit : null });
+  }));
 
 server.registerTool('shops_get', { title: 'Get shop', description: 'Full shop record (name, handle, description, template, settings, images, markets, publish state).',
   inputSchema: { shop_id: zid.describe('Numeric shop id (see shops_list)') } },
@@ -112,8 +145,15 @@ server.registerTool('shops_upload_image', { title: 'Upload shop image', descript
   }));
 
 // ── lists ───────────────────────────────────────────────────────────────────
-server.registerTool('lists_list', { title: 'List lists', description: 'Lists (collections) of a shop with product counts.', inputSchema: { shop_id: zid } },
-  guard(async ({ shop_id }) => ok(await get(`${P}/shops/${shop_id}/lists`))));
+server.registerTool('lists_list', { title: 'List lists', description: 'Lists (collections) of a shop as compact rows (id, name, slug, public, featured, product count, market, short description). full=true returns the raw records.',
+  inputSchema: { shop_id: zid, q: z.string().optional().describe('Case-insensitive filter on name/slug'), limit: z.number().int().min(1).max(200).default(50), offset: z.number().int().min(0).default(0), full: z.boolean().default(false) } },
+  guard(async ({ shop_id, q, limit, offset, full }) => {
+    const r = await get<{ lists: ListRow[] }>(`${P}/shops/${shop_id}/lists`);
+    let lists = r.lists || [];
+    if (q) { const needle = q.toLowerCase(); lists = lists.filter((l) => l.name?.toLowerCase().includes(needle) || l.slug?.toLowerCase().includes(needle)); }
+    const page = lists.slice(offset, offset + limit);
+    return ok({ total: lists.length, offset, limit, lists: full ? page : page.map(listRow), next_offset: offset + limit < lists.length ? offset + limit : null });
+  }));
 
 server.registerTool('lists_get', { title: 'Get list', description: 'A list with its products (each with listItemId, offerId, overrides).', inputSchema: { shop_id: zid, list_id: zid } },
   guard(async ({ shop_id, list_id }) => ok(await get(`${P}/shops/${shop_id}/lists/${list_id}`))));
@@ -216,7 +256,10 @@ server.registerTool('analytics_top_products', { title: 'Top products', descripti
 server.registerTool('earnings_summary', { title: 'Earnings', description: 'Affiliate earnings, clicks, conversions and payouts of a shop (70/30 rev-share on Awin conversions).', inputSchema: { shop_id: zid, months: z.number().int().min(1).max(24).optional() } },
   guard(async ({ shop_id, months }) => ok(await get(`${P}/shops/${shop_id}/earnings`, { query: { months } }))));
 
+// ── docs & embed snippets (no credentials needed) ───────────────────────────
+registerDocsAndSnippetTools(server, { basketNeedsWishlistServer: true });
+
 // ── start ───────────────────────────────────────────────────────────────────
 const transport = new StdioServerTransport();
 await server.connect(transport);
-process.stderr.write(`[shareawish-creator] ready (${authConfigured() ? 'credentials configured' : 'NO credentials – set SHAREAWISH_EMAIL/SHAREAWISH_PASSWORD'})\n`);
+process.stderr.write(`[shareawish-creator] ready (${authConfigured() ? 'credentials configured' : 'no credentials – set SHAREAWISH_TOKEN; docs/snippet tools still work'})\n`);
